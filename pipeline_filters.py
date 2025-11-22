@@ -5,16 +5,16 @@ import numpy as np
 #  Artistic Filters
 # ================================================================
 
-# --------- 1. Cartoon filter (Anime Style) ----------
+# --------- 1. Cartoon filter ----------
 class CartoonFilter:
     def apply(self, img):
 
-        # 1) Strong smoothing (makes colors soft & anime-like)
+        # 1) Strong smoothing 
         smooth = img.copy()
         for i in range(8):
             smooth = cv2.bilateralFilter(smooth, 9, 12, 12)
 
-        # 2) Posterization (reduces colors like anime)
+        # 2) Posterization
         Z = smooth.reshape((-1, 3))
         Z = np.float32(Z)
         K = 10
@@ -56,13 +56,13 @@ class CartoonFilter:
         return cartoon
 
 
-# ---------- 2. Watercolor (smooth, brush-stroke style) ----------
+# ---------- 2. Watercolor---------
 class WatercolorFilter:
     def apply(self, img):
-        # STEP 1 — Strong watercolor smoothing
+        # 1) Strong watercolor smoothing
         base = cv2.stylization(img, sigma_s=60, sigma_r=0.55)
 
-        # STEP 2 — Edge darkening
+        # 2) Edge darkening
         gray = cv2.cvtColor(base, cv2.COLOR_BGR2GRAY)
         edges = cv2.Canny(gray, 40, 100)
 
@@ -74,51 +74,51 @@ class WatercolorFilter:
         brown[:] = (40, 80, 140)  # BGR brown
         brown_edges = cv2.bitwise_and(brown, brown, mask=edges)
 
-        # STEP 3 — SAFE paper texture (no overflow)
+        # 3)SAFE paper texture (no overflow)
         noise = np.random.normal(0, 6, img.shape).astype(np.float32)
         base_f = base.astype(np.float32)
 
         paper = base_f + noise
         paper = np.clip(paper, 0, 255).astype(np.uint8)
 
-        # STEP 4 — Final blend
+        # 4) Final blend
         final = cv2.addWeighted(paper, 0.92, brown_edges, 0.08, 0)
 
         return final
 
 
 
-# ---------- 3. Cyberpunk Neon (saturated, glowing edges) ----------
+# ---------- 3. Cyberpunk Neon ----------
 class CyberpunkFilter:
     def apply(self, img):
-        # Step 1: Increase base contrast + saturation
+        # 1) Increase base contrast + saturation
         hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
         hsv[:,:,1] = cv2.add(hsv[:,:,1], 30)  # saturation boost
         hsv[:,:,2] = cv2.add(hsv[:,:,2], 20)  # brightness boost
         base = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
 
-        # Step 2: Clean thin edge detection
+        # 2) Clean thin edge detection
         gray = cv2.cvtColor(base, cv2.COLOR_BGR2GRAY)
         edges = cv2.Canny(gray, 60, 140)
         edges = cv2.GaussianBlur(edges, (3,3), 0)  # thin & clean edges
 
-        # Step 3: Convert edges to neon glow (purple-blue)
+        # 3) Convert edges to neon glow (purple-blue)
         neon = cv2.applyColorMap(edges, cv2.COLORMAP_COOL)  # COOL = pink/blue
 
-        # Step 4: Add bloom (glow blur)
+        # 4) Add bloom (glow blur)
         glow = cv2.GaussianBlur(neon, (25,25), 0)
 
-        # Step 5: Blend neon glow with original image
+        # 5) Blend neon glow with original image
         final = cv2.addWeighted(base, 0.75, glow, 0.25, 0)
 
-        # Step 6: Add light chromatic aberration for cyberpunk vibe
+        # 6) Add light chromatic aberration for cyberpunk vibe
         b,g,r = cv2.split(final)
         r_shift = np.roll(r, 1, axis=1)
         final = cv2.merge([b, g, r_shift])
 
         return final
 
-    # --------- Comic Book Style Filter ----------
+# ---------4.  Comic Book Style Filter ----------
 class ComicBookFilter:
     def apply(self, img):
 
@@ -157,7 +157,7 @@ class ComicBookFilter:
 
         return comic
 
-    # --------- Manga Black & White Filter ----------
+# ---------5.  Manga Black & White Filter ----------
 class MangaFilter:
     def apply(self, img):
 
@@ -197,45 +197,27 @@ class MangaFilter:
 
         return manga_3ch
 
-    # --------- Pure Black Line Art Filter ----------
-# --------- Line Art PRO (smooth, connected, bold ink) ----------
+# ---------6.  Pure Black Line Art Filter ----------
 class LineArtFilter:
     def apply(self, img):
 
         # 1) Convert to grayscale
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-        # 2) Apply Gaussian blur to smooth noise
-        blur = cv2.GaussianBlur(gray, (5, 5), 0)
+        # 2) Edge detection for line art
+        edges = cv2.Canny(gray, 50, 150)
 
-        # 3) Difference of Gaussian (DoG) for clean connected edges
-        g1 = cv2.GaussianBlur(blur, (0, 0), 1)
-        g2 = cv2.GaussianBlur(blur, (0, 0), 2)
-        dog = g1 - g2
+        # 3) Thicken lines slightly
+        kernel = np.ones((2,2), np.uint8)
+        edges = cv2.dilate(edges, kernel, iterations=1)
 
-        # Normalize to 0–255
-        dog = cv2.normalize(dog, None, 0, 255, cv2.NORM_MINMAX).astype("uint8")
+        # 4) Invert → black lines on white
+        lineart = 255 - edges
 
-        # 4) Threshold to pure black lines
-        _, line = cv2.threshold(dog, 30, 255, cv2.THRESH_BINARY_INV)
+        # 5) Convert to 3-channel (for saving)
+        lineart_3ch = cv2.cvtColor(lineart, cv2.COLOR_GRAY2BGR)
 
-        # 5) Morphological operations to CONNECT broken lines
-        kernel = np.ones((3, 3), np.uint8)
-
-        # Thicken lines
-        line = cv2.dilate(line, kernel, iterations=2)
-
-        # Connect gaps
-        line = cv2.morphologyEx(line, cv2.MORPH_CLOSE, kernel, iterations=2)
-
-        # Remove tiny noise
-        line = cv2.medianBlur(line, 5)
-
-        # 6) Convert to 3-channel for saving
-        lineart = cv2.cvtColor(line, cv2.COLOR_GRAY2BGR)
-
-        return lineart
-
+        return lineart_3ch
 
 
 # ================================================================
@@ -243,25 +225,31 @@ class LineArtFilter:
 # ================================================================
 
 class Process:
-    def __init__(self, input_path, filters=None, pixel_block=1):
+    def __init__(self, input_path, filters=None, pixel_block=8):
         self.input_path = input_path
         self.filters = filters if filters else []
         self.pixel_block = pixel_block
 
     def pixelize(self, img):
-        if self.pixel_block <= 1:
+        x = self.pixel_block
+
+        if x <= 1:
             return img
 
         h, w = img.shape[:2]
-        x = self.pixel_block
-        small = cv2.resize(img, (w // x, h // x), interpolation=cv2.INTER_LINEAR)
+
+        # avoid 0 size
+        new_w = max(1, w // x)
+        new_h = max(1, h // x)
+
+        small = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
         pix = cv2.resize(small, (w, h), interpolation=cv2.INTER_NEAREST)
         return pix
 
     def run(self):
         img = cv2.imread(self.input_path)
 
-        # Apply filters first (Ghibli, Watercolor, Cyberpunk)
+        # Apply filters first
         for flt in self.filters:
             img = flt.apply(img)
 
